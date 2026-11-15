@@ -18,9 +18,9 @@ intake → 1 analyse → 2 spec → 3 build (×N) → 4 verify ┐
 
 1. **You route, agents build.** You never write product code, specs, tests or reviews yourself. You parse the
    arguments, move labels, spawn agents, read their `RESULT` blocks, decide the next step and report.
-2. **Every stage is a fresh subagent** (Agent tool, `subagent_type: "general-purpose"`, `model` from
-   `factory.yaml`). Subagents cannot spawn subagents, so you spawn all of them. Spawn independent agents in one
-   message so they run at the same time, wait for each completion notification, and never guess a result.
+2. **Every stage is a fresh agent with its own context** (see "Spawning agents" for how, in each tool). Subagents
+   can't spawn subagents, so you spawn all of them. Start independent agents at the same time, wait for each one
+   to finish, and never guess a result.
 3. **State lives in GitHub, not in your context.** Each issue carries exactly one `factory:<stage>` label, each
    stage leaves a marker comment (`<!-- factory:<stage> -->`), and the spec lives on the change branch. Any run can
    resume from that.
@@ -35,6 +35,23 @@ intake → 1 analyse → 2 spec → 3 build (×N) → 4 verify ┐
 8. **The factory ends at the merge.** Work branches start from `git.target_branch`, PRs target it, and the release
    agent merges into it. Nothing in the factory deploys, tags or releases to production: that stays with the repo's
    own release process.
+
+## Spawning agents (any tool)
+
+This skill uses the open Agent Skills format and runs in any coding agent that can start subagents. Use the first
+option your tool supports:
+
+1. **Claude Code:** the Agent tool with `subagent_type: "general-purpose"`, `model: <agents.models.<role>>`, and
+   `isolation: "worktree"` for every stage marked "worktree" below. Agents run in the background, and you are told
+   when each one finishes.
+2. **Other tools with subagents** (Codex, Gemini CLI, GitHub Copilot, Cursor, OpenCode…): use the tool's subagent
+   feature with the same prompt and the model from `agents.models.<role>`. If the tool can't give an agent its own
+   worktree, start the prompt with: "First run
+   `git worktree add -d ../<repo>-factory-wt/<stage>-<issue> origin/<target>` and work only there. Remove it with
+   `git worktree remove` when done."
+3. **No subagents:** run each stage as its own headless session from the repo root, in its own worktree as in
+   option 2: `claude -p "<prompt>"`, `codex exec "<prompt>"`, `gemini -p "<prompt>"` or your tool's equivalent.
+   Run independent stages as parallel background processes, and read the `RESULT` block from each one's output.
 
 ## Arguments
 
@@ -74,7 +91,8 @@ matches, list them and ask which one.
    `go.mod` (`go vet ./...`, `go test ./...`), `Cargo.toml` (`cargo clippy`, `cargo test`) and `Makefile` targets.
    Leave a command empty rather than guess it. Set `git.target_branch` to the branch the user wants changes merged
    into (default: the repo's default branch).
-2. If `openspec/` is missing, run `openspec init --tools claude .`.
+2. If `openspec/` is missing, run `openspec init --tools <tool> .`, naming the tool you are running in: `claude`,
+   `codex`, `cursor`, `gemini`, `github-copilot`, `opencode`, and so on (`openspec init --help` lists them all).
 3. Create the labels in the table below with `gh label create <name> --color <hex> --description "<text>" --force`.
 4. Add `.factory/` to `.gitignore`.
 5. **CI.** Check that `.github/workflows/` has a workflow that runs on `pull_request`. If none does, warn the user:
@@ -129,7 +147,7 @@ Finish with the RESULT block your role file defines.
 | 5 Review | `factory:review` | reviewer | `reviewer` | yes |
 | 6 Release | `factory:release` | release | `release` | yes |
 
-To spawn with a worktree, pass `isolation: "worktree"` to the Agent tool.
+"Worktree" means the agent works in its own git worktree (see "Spawning agents").
 
 ### 1. Analyse
 

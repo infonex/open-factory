@@ -1,6 +1,7 @@
 # open-factory
 
-**A software factory for Claude Code.** Give it a ticket, an epic, a sentence of instructions, or a queue of ready
+**A software factory for AI coding agents:** Claude Code, Codex, Gemini CLI, GitHub Copilot, Cursor, or any tool
+that reads [Agent Skills](https://agentskills.io). Give it a ticket, an epic, a sentence of instructions, or a queue of ready
 issues. A team of agents analyses the work, writes an [OpenSpec](https://openspec.dev) spec, builds it with parallel
 developers, verifies it against hidden scenarios, reviews it independently and merges it into your target branch
 (`main` by default). **It never deploys or releases to production**: that stays with your own release process.
@@ -13,6 +14,15 @@ developers, verifies it against hidden scenarios, reviews it independently and m
 /factory ticket #142
 /factory epic "Billing v2"
 /factory run
+```
+
+## The flow
+
+```mermaid
+flowchart LR
+    RUN(["factory run"]) --> A["Analyse"] --> S["Spec"] --> D["Develop ×N"] --> V["Verify"] --> R["Review"] --> M(["Merge to main"])
+    V -. fail .-> D
+    R -. fail .-> D
 ```
 
 ## How it works
@@ -43,8 +53,8 @@ flowchart TD
     DONE -.-> PROD["Production release<br/>your own process, outside the factory"]
 ```
 
-The main Claude Code session is the **orchestrator**. Subagents can't spawn subagents, so it spawns every agent
-itself, each with a fresh context. All state lives in GitHub: one `factory:<stage>` label per issue, one marker
+Your main agent session is the **orchestrator**. Subagents can't spawn subagents, so it spawns every agent itself,
+each with a fresh context. It uses your tool's subagents, or separate headless runs if the tool has none. All state lives in GitHub: one `factory:<stage>` label per issue, one marker
 comment per stage, and the spec on the change branch. A crashed or interrupted run picks up where it left off on
 the next `/factory run`.
 
@@ -63,29 +73,58 @@ the next `/factory run`.
 
 ## Install
 
-Requirements: [Claude Code](https://claude.com/claude-code), `git`, the [GitHub CLI](https://cli.github.com)
-(signed in, with write access to the repo), and the OpenSpec CLI (`npm i -g @fission-ai/openspec`).
+Requirements:
 
-**As a plugin** (every repo on your machine):
+- an AI coding tool that supports Agent Skills and, ideally, subagents
+- `git`
+- the [GitHub CLI](https://cli.github.com), signed in with write access to the repo
+- the OpenSpec CLI (`npm i -g @fission-ai/openspec`)
+
+### Pick your tool
+
+Copy `skills/factory/` into your repo at the path your tool reads skills from:
+
+| Tool | Copy `skills/factory/` to | How it runs the agents | `openspec init --tools` |
+| --- | --- | --- | --- |
+| Claude Code | `.claude/skills/factory/`, or install the plugin (below) | Subagents in their own worktrees, built in | `claude` |
+| OpenAI Codex CLI | `.agents/skills/factory/` | Subagents | `codex` |
+| Gemini CLI | `.gemini/skills/factory/` or `.agents/skills/factory/` | Subagents (experimental) | `gemini` |
+| GitHub Copilot (CLI, VS Code, coding agent) | `.github/skills/factory/` | Custom agents | `github-copilot` |
+| Cursor | `.cursor/skills/factory/` | Subagents | `cursor` |
+| Anything else | Wherever it reads `SKILL.md` | Headless runs (`claude -p`, `codex exec`, `gemini -p`), one per stage | see `openspec init --help` |
+
+Agents that can't get their own worktree from the tool create one with `git worktree add`; the skill tells them
+how. Set `agents.models` in `factory.yaml` to your tool's model names.
+
+> Built and run on Claude Code. The other tools are supported through the open Agent Skills and OpenSpec standards
+> but haven't been tested yet. Skill paths are as of November 2026, so check your tool's docs.
+
+**Claude Code plugin** (every repo on your machine):
 
 ```
 /plugin marketplace add ludmal/open-factory
 /plugin install open-factory@open-factory
 ```
 
-**Or copy it into one repo:** copy `skills/factory/` to `<your repo>/.claude/skills/factory/`.
+### Set up the repo
 
-Then, in the repo:
+Run the skill's `init` from your tool. In Claude Code that's `/factory init`; in other tools, invoke the skill
+their way or just ask "run factory init".
 
-```
-/factory init
-```
+`init` does the following, then opens a setup PR. **You merge that one yourself.**
 
-`init` writes `factory.yaml` (detecting your lint, test and build commands), runs `openspec init`, creates the
-labels, git-ignores `.factory/`, checks your CI and branch protection, and opens a setup PR. **You merge that one
-yourself.** The skill is `/factory`, or `/open-factory:factory` if another skill is already called `factory`.
+- writes `factory.yaml`, detecting your lint, test and build commands
+- runs `openspec init`
+- creates the labels
+- git-ignores `.factory/`
+- checks your CI and branch protection
+
+In Claude Code the skill is `/factory`, or `/open-factory:factory` if another skill is already called `factory`.
 
 ## Commands
+
+Shown in Claude Code's slash form. In other tools, invoke the skill their way, or say it in words, e.g. "factory
+epic Billing v2".
 
 | Command | Does |
 | --- | --- |
@@ -113,13 +152,13 @@ Steer it with labels: add `factory:ready` to queue an issue, `factory:stop` to h
 | `policy.holdout_pass_rate` | `1.0` | Share of hidden scenarios that must pass |
 | `policy.circuit_breaker.max_reverts_7d` | `2` | More reverted factory PRs than this in 7 days switches merging to `human` |
 | `agents.max_parallel_developers` | `4` | Developers running at once, across all items |
-| `agents.models.*` | Opus for the analyst, spec writer, developers and reviewer; Sonnet for the verifier and release | Per-agent model |
+| `agents.models.*` | Opus for the analyst, spec writer, developers and reviewer; Sonnet for the verifier and release | Per-agent model, in your tool's names |
 | `commands.*` | detected | `install`, `lint`, `typecheck`, `test`, `build`, `start`, `e2e` |
 
 ## What's in the repo
 
 ```
-.claude-plugin/          plugin + marketplace manifests
+.claude-plugin/          Claude Code plugin + marketplace manifests (optional)
 skills/factory/
   SKILL.md               the orchestrator: arguments, stages, labels, resume
   roles/RULES.md         rules every agent follows
@@ -184,7 +223,7 @@ A dark factory ships what its checks let through. Before you use it on a product
 
 ## Roadmap
 
-- Headless mode: one `claude -p` per stage on a schedule, with a spend cap per run
+- Scheduled headless mode: one CLI run per stage (`claude -p`, `codex exec`, `gemini -p`) with a spend cap per run
 - Jira and Linear intake
 - Digital twins of third-party services for the verifier
 

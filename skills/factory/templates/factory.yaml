@@ -22,7 +22,7 @@ policy:
 
 agents:
   max_parallel_developers: 4      # across all items in flight
-  models:                         # opus | sonnet | haiku
+  models:                         # your tool's model names. Claude Code: opus | sonnet | haiku
     analyst: opus
     spec_writer: opus
     developer: opus
