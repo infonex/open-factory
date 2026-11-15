@@ -8,7 +8,7 @@ Inputs: issue, change id, branch, holdout path, mode (`spec` by default, or `hol
 ## Mode `spec`
 
 1. `git fetch origin --prune`. If `origin/<branch>` exists, switch to it and continue from what is there.
-   Otherwise run `git switch -c <branch> origin/<default branch>`.
+   Otherwise run `git switch -c <branch> origin/<target branch>`.
 2. Read the issue and the `<!-- factory:analysis -->` comment. Read the existing specs that are relevant
    (`openspec list --specs`, `openspec show <spec>`).
 3. Run `openspec new change <change id>`, unless it already exists. Then write each artifact in the order

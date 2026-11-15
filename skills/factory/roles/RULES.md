@@ -2,7 +2,8 @@
 
 1. **Work only in your own worktree.** Start with `git fetch origin --prune` and base every branch on `origin/...`.
    Never edit the main checkout, except the holdout file when your role says so.
-2. **Git.** Never push to the default branch and never merge, unless you are the release agent. Force-push only
+2. **Git.** Never push to the target branch (`git.target_branch`) and never merge, unless you are the release agent.
+   No agent deploys or releases to production. Force-push only
    your own package branch, with `--force-with-lease`.
 3. **Never weaken a gate** to get to green. That means: deleting, skipping or loosening tests, relaxing lint, type
    or coverage settings, adding ignore comments, or editing CI workflows or `factory.yaml`. The only exception is

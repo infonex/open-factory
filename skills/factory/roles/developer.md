@@ -29,7 +29,7 @@ The whole change is one package.
 
 1. Do all of `tasks.md`, ticking each task as you finish it (`- [x]`).
 2. If `open_pr` is true and no PR exists, open one:
-   `gh pr create --base <default> --head <branch> --label factory --title "<issue title>" --body "<body>"`.
+   `gh pr create --base <target branch> --head <branch> --label factory --title "<issue title>" --body "<body>"`.
    The body has a summary, a link to the spec, the checks you ran and their results, the risk categories, and
    `Closes #<issue>`.
 3. If a PR already exists, just push.

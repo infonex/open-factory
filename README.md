@@ -2,7 +2,8 @@
 
 **A software factory for Claude Code.** Give it a ticket, an epic, a sentence of instructions, or a queue of ready
 issues. A team of agents analyses the work, writes an [OpenSpec](https://openspec.dev) spec, builds it with parallel
-developers, verifies it against hidden scenarios, reviews it independently, merges it and smoke-checks production.
+developers, verifies it against hidden scenarios, reviews it independently and merges it into your target branch
+(`main` by default). **It never deploys or releases to production**: that stays with your own release process.
 
 > Status: proof of concept. By default it runs as a *dark factory*: no human reads the spec or the code before it
 > merges. Read [Safety](#safety) before pointing it at a production repo.
@@ -37,10 +38,9 @@ flowchart TD
     FIX -- rounds exhausted --> BLK
     VR -- pass --> HC{"hold category or<br/>merge: human?"}
     HC -- yes --> HOLD
-    HC -- no --> RL["6 · Release<br/>update branch · archive spec<br/>CI green · squash merge · close issues"]
-    RL --> SM{"7 · Smoke check<br/>after deploy"}
-    SM -- pass --> DONE[("factory:done")]
-    SM -- fail --> RV["revert PR · reopen issue"] --> CB["circuit breaker<br/>too many reverts → merge: human"]
+    HC -- no --> RL["6 · Release<br/>update branch · archive spec · CI green<br/>squash merge into target branch (main)<br/>close issues"]
+    RL --> DONE[("factory:done<br/>change is on main")]
+    DONE -.-> PROD["Production release<br/>your own process, outside the factory"]
 ```
 
 The main Claude Code session is the **orchestrator**. Subagents can't spawn subagents, so it spawns every agent
@@ -59,8 +59,7 @@ the next `/factory run`.
 | 4 | **Verify** | verifier (Sonnet) | Fresh context; its job is to prove the change doesn't work. Runs every check, starts the app and exercises every public and hidden scenario for real (HTTP, CLI, browser), not by reading the code. Scores hidden scenarios as *satisfaction*. | verification comment | — (failures go to a fix round) |
 | 5 | **Review** | reviewer (Opus) | Fresh context and deliberately no developer notes. Checks spec coverage (requirement → code → test), correctness, security, data safety, and **gate tampering** (skipped tests, loosened lint, edited CI). | review comment | — (blocking findings go to a fix round) |
 | ↺ | **Fix round** | developer (Opus) | Gets the reviewer's findings word for word, and the verifier's failures as *violated requirement + observed behaviour*, never the hidden scenario. Then verify and review run again. | fix-round comment | `max_fix_rounds` used up → `factory:blocked` |
-| 6 | **Release** | release (Sonnet) | One at a time (a merge queue): updates the branch, archives the OpenSpec change into the living specs, waits for CI, squash-merges and checks the issues closed. | merged commit, updated `openspec/specs/` | merge refused, or a hold applies |
-| 7 | **Smoke** | release (Sonnet) | Waits for the deployment and runs your smoke command. On failure it reverts at once, reopens the issue, and counts the revert toward the circuit breaker. | release comment | smoke fails → revert |
+| 6 | **Release** | release (Sonnet) | One at a time (a merge queue): updates the branch, archives the OpenSpec change into the living specs, waits for CI, squash-merges into `git.target_branch` and checks the issues closed. **The factory stops here**: no deploy, no tag, no production release. | merged commit on the target branch, updated `openspec/specs/` | merge refused, or a hold applies |
 
 ## Install
 
@@ -106,15 +105,16 @@ Steer it with labels: add `factory:ready` to queue an issue, `factory:stop` to h
 
 | Key | Default | Meaning |
 | --- | --- | --- |
+| `git.target_branch` | `main` | The branch work starts from, PRs target, and the factory merges into. Use a non-deploying branch (e.g. `develop`) if pushes to `main` deploy to production |
 | `policy.merge` | `auto` | `auto`: the release agent merges (dark factory). `human`: it stops at a ready PR |
 | `policy.spec_approval` | `none` | `epics` or `always` stops for a human after the spec |
 | `policy.hold_for_human` | `[]` | Categories that always stop before merge: `infrastructure`, `destructive-migration`, `payments`, `auth`, `ci-config`, `dependency-major`, `public-api` |
 | `policy.max_fix_rounds` | `2` | Failed verify or review rounds before a human is asked |
 | `policy.holdout_pass_rate` | `1.0` | Share of hidden scenarios that must pass |
-| `policy.circuit_breaker.max_reverts_7d` | `2` | More reverts than this in 7 days switches merging to `human` |
+| `policy.circuit_breaker.max_reverts_7d` | `2` | More reverted factory PRs than this in 7 days switches merging to `human` |
 | `agents.max_parallel_developers` | `4` | Developers running at once, across all items |
 | `agents.models.*` | Opus for the analyst, spec writer, developers and reviewer; Sonnet for the verifier and release | Per-agent model |
-| `commands.*` | detected | `install`, `lint`, `typecheck`, `test`, `build`, `start`, `e2e`, `smoke`, `smoke_after_seconds` |
+| `commands.*` | detected | `install`, `lint`, `typecheck`, `test`, `build`, `start`, `e2e` |
 
 ## What's in the repo
 
@@ -128,7 +128,7 @@ skills/factory/
   roles/developer.md     3 · build (single, package, integrate, fix)
   roles/verifier.md      4 · verify
   roles/reviewer.md      5 · review
-  roles/release.md       6–7 · release + smoke
+  roles/release.md       6 · merge into the target branch
   templates/factory.yaml config template
 ```
 
@@ -146,11 +146,11 @@ put the *dark factory* at level 5: no human writes or reviews the code.
 | Parallel builders | Yes, per work package | Yes | Yes, 1,000+ merged PRs a week | Yes |
 | Code review | Independent agent | None, by rule | An engineer reviews every PR | Agents, plus humans by change class |
 | Merge | Agent (configurable) | Agent | Human | Merge queue; humans for high-risk classes |
-| After merge | Smoke, revert, circuit breaker | — | — | Canary, auto-rollback, monitoring agent |
+| After merge | Stops at the merge; circuit breaker on reverts | — | — | Canary, auto-rollback, monitoring agent |
 
 The pattern open-factory takes from these: keep the code that builds and the checks that judge it separate (fresh
 contexts, hidden scenarios, no developer notes for the reviewer), cap retries and escalate, never let an agent
-weaken its own gates, and make the release reversible.
+weaken its own gates, and keep merging separate from releasing.
 
 Sources: [StrongDM's software factory (Simon Willison)](https://simonwillison.net/2026/Feb/7/software-factory/) ·
 [factory.strongdm.ai](https://factory.strongdm.ai/) ·
@@ -162,7 +162,10 @@ Sources: [StrongDM's software factory (Simon Willison)](https://simonwillison.ne
 
 A dark factory ships what its checks let through. Before you use it on a production repo:
 
-- **Your checks are the reviewer.** Require CI status checks on the default branch. Without CI, it merges on the
+- **Merging isn't releasing.** The factory stops at the merge into `git.target_branch`. If your hosting deploys
+  every push to `main` to production, point `git.target_branch` at a branch that doesn't deploy (e.g. `develop`).
+  `/factory init` warns you when it spots this.
+- **Your checks are the reviewer.** Require CI status checks on the target branch. Without CI, it merges on the
   verifier's local evidence alone.
 - **Hold what you can't undo.** Consider `hold_for_human: [destructive-migration, infrastructure, payments, auth]`.
   A code revert doesn't bring back dropped data.
@@ -183,7 +186,6 @@ A dark factory ships what its checks let through. Before you use it on a product
 
 - Headless mode: one `claude -p` per stage on a schedule, with a spend cap per run
 - Jira and Linear intake
-- Canary and feature-flag rollout instead of a single smoke check
 - Digital twins of third-party services for the verifier
 
 ## License

@@ -2,9 +2,12 @@
 # Changes to this file are never merged by the factory itself: a human merges them.
 version: 1
 
+git:
+  target_branch: main             # the branch the factory starts from and merges into. The factory stops there:
+                                  # it never deploys or releases to production.
+
 tracker:
   ready_label: factory:ready      # only issues with this label enter `/factory run`
-  default_branch: main
 
 policy:
   merge: auto                     # auto: the release agent merges (dark factory) | human: it stops at a ready PR
@@ -15,7 +18,7 @@ policy:
   max_fix_rounds: 2               # failed verify/review rounds sent back to developers before a human is asked
   holdout_pass_rate: 1.0          # share of hidden scenarios that must pass (0.0–1.0)
   circuit_breaker:
-    max_reverts_7d: 2             # more factory reverts than this in 7 days switches merge to human
+    max_reverts_7d: 2             # more reverted factory PRs than this in 7 days switches merge to human
 
 agents:
   max_parallel_developers: 4      # across all items in flight
@@ -35,5 +38,3 @@ commands:                         # filled in by `/factory init`; leave empty to
   build: ""                       # e.g. pnpm build
   start: ""                       # starts the app locally for the verifier, e.g. pnpm dev --port $PORT
   e2e: ""                         # e.g. pnpm exec playwright test
-  smoke: ""                       # runs after merge against the deployed app, e.g. ./scripts/smoke.sh https://app.example.com
-  smoke_after_seconds: 300        # wait for the deployment before smoke

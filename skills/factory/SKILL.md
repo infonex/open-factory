@@ -1,6 +1,6 @@
 ---
 name: factory
-description: A software factory for a GitHub repo. Takes a ticket, an epic, free-text instructions or the whole ready queue and runs each item through analysis, an OpenSpec spec, parallel developer agents, verification against hidden scenarios, an independent review and an automatic merge with a post-merge smoke check. Use when the user types /factory, or asks to run the factory, build a ticket or epic end to end, or work through the ready queue.
+description: A software factory for a GitHub repo. Takes a ticket, an epic, free-text instructions or the whole ready queue and runs each item through analysis, an OpenSpec spec, parallel developer agents, verification against hidden scenarios, an independent review and an automatic merge into the target branch (main by default). It never deploys or releases to production. Use when the user types /factory, or asks to run the factory, build a ticket or epic end to end, or work through the ready queue.
 argument-hint: "init | run | status | ticket <#|url|title> | epic <#|milestone|title> | \"<instructions>\""
 ---
 
@@ -11,7 +11,7 @@ through seven stages, and spawn a fresh agent for every stage. Agents do the wor
 
 ```
 intake → 1 analyse → 2 spec → 3 build (×N) → 4 verify ┐
-                                                5 review ┴→ (fix round)* → 6 release → 7 smoke → done
+                                                5 review ┴→ (fix round)* → 6 merge into target branch → done
 ```
 
 ## Ground rules
@@ -32,6 +32,9 @@ intake → 1 analyse → 2 spec → 3 build (×N) → 4 verify ┐
    agent also reads `SKILL_DIR/roles/RULES.md`. Always pass absolute paths.
 7. **The factory never merges changes to its own gates** (`factory.yaml`, CI workflows, branch protection). Those
    stop for a human.
+8. **The factory ends at the merge.** Work branches start from `git.target_branch`, PRs target it, and the release
+   agent merges into it. Nothing in the factory deploys, tags or releases to production: that stays with the repo's
+   own release process.
 
 ## Arguments
 
@@ -51,12 +54,15 @@ matches, list them and ask which one.
 ## Preflight (every argument except `status`)
 
 1. `git rev-parse --show-toplevel`, `gh auth status`, and
-   `gh repo view --json nameWithOwner,defaultBranchRef`. Stop with the exact problem if any fails.
+   `gh repo view --json nameWithOwner`. Stop with the exact problem if any fails.
 2. `openspec --version`. If it's missing, tell the user to run `npm i -g @fission-ai/openspec` and stop.
 3. Read `factory.yaml` at the repo root. If it's missing, offer `init` and stop. Read `AGENTS.md`, `CLAUDE.md` and
-   `CONTRIBUTING.md` if they exist: their conventions bind every agent.
-4. **Circuit breaker.** Count the PRs labelled `factory:revert` merged in the last 7 days:
-   `gh pr list --state merged --label factory:revert --search "merged:>=<date 7 days ago>" --json number`.
+   `CONTRIBUTING.md` if they exist: their conventions bind every agent. The **target branch** is
+   `git.target_branch` (default `main`). Check it exists with `git ls-remote --exit-code --heads origin <target>`.
+4. **Circuit breaker.** Count the reverts of factory PRs merged into the target branch in the last 7 days. These are
+   PRs labelled `factory:revert`, plus PRs made with GitHub's Revert button on a factory PR (head branch
+   `revert-<n>-factory/...`):
+   `gh pr list --state merged --base <target> --search "merged:>=<date 7 days ago>" --json headRefName,labels`.
    If the count exceeds `policy.circuit_breaker.max_reverts_7d`, treat `policy.merge` as `human` for this run and
    say so in the first line of your report.
 5. `mkdir -p .factory/holdout .factory/runs`, and make sure `.factory/` is in `.gitignore`.
@@ -66,14 +72,18 @@ matches, list them and ask which one.
 1. Copy `SKILL_DIR/templates/factory.yaml` to the repo root. Fill in `commands` from what the repo actually uses:
    `package.json` scripts (the package manager follows the lockfile), `pyproject.toml` (ruff, mypy, pytest),
    `go.mod` (`go vet ./...`, `go test ./...`), `Cargo.toml` (`cargo clippy`, `cargo test`) and `Makefile` targets.
-   Leave a command empty rather than guess it. Set `tracker.default_branch`.
+   Leave a command empty rather than guess it. Set `git.target_branch` to the branch the user wants changes merged
+   into (default: the repo's default branch).
 2. If `openspec/` is missing, run `openspec init --tools claude .`.
 3. Create the labels in the table below with `gh label create <name> --color <hex> --description "<text>" --force`.
 4. Add `.factory/` to `.gitignore`.
 5. **CI.** Check that `.github/workflows/` has a workflow that runs on `pull_request`. If none does, warn the user:
    the release agent will merge on the verifier's local evidence alone. Offer to add a minimal CI workflow that runs
    the configured commands to the init PR.
-6. **Branch protection.** Read it with `gh api repos/{owner}/{repo}/branches/<default>/protection`, which returns 404
+   **Deploys.** If a workflow, or a hosting integration such as Vercel or Netlify, deploys to production on every
+   push to the target branch, warn the user: the factory's merges would then reach production. Suggest a target
+   branch that doesn't deploy (for example `develop`).
+6. **Branch protection.** Read it with `gh api repos/{owner}/{repo}/branches/<target>/protection`, which returns 404
    when there is none. Report whether status checks are required. Never change repository settings yourself; tell
    the user what to set. For `merge: auto`: require the CI checks, and don't require an approving review, because
    the factory's account can't approve its own PR. A separate bot account or GitHub App is the alternative.
@@ -103,7 +113,7 @@ Every spawn prompt follows this shape:
 ```
 You are the <ROLE> of an open-factory run.
 Read SKILL_DIR/roles/RULES.md, then SKILL_DIR/roles/<role>.md, and follow them exactly.
-Repo: <owner/repo> · main checkout: <absolute path> · default branch: <branch>
+Repo: <owner/repo> · main checkout: <absolute path> · target branch: <git.target_branch>
 Config: <absolute path>/factory.yaml
 Issue: #<n> <title>
 <stage inputs listed below>
@@ -206,12 +216,10 @@ human merged the PR, the next `run` marks the item done.
 **Merge queue.** Only one release agent runs at a time, across all items. Before releasing the next PR, check that
 the previous release has finished.
 
-Inputs: mode (`merge` or `prepare`), PR number, change id, issue numbers, `commands.smoke`,
-`commands.smoke_after_seconds`. Results:
+Inputs: mode (`merge` or `prepare`), PR number, change id, issue numbers, target branch. Results:
 
-- `merged` and smoke `pass` or `skipped` → `factory:done`.
-- Smoke `fail` → the agent has reverted the PR and reopened the issue. Label it `factory:blocked`.
-- `blocked` (merge refused, conflicts, CI failing) → a CI failure or conflict counts as a fix round; anything else
+- `merged` → `factory:done`. The change is on the target branch and the factory's work on it ends here.
+- `fail` or `blocked` (merge refused, conflicts, CI failing) → a CI failure or conflict counts as a fix round; anything else
   goes to `factory:blocked`.
 
 ## Labels
@@ -224,10 +232,10 @@ Inputs: mode (`merge` or `prepare`), PR number, change id, issue numbers, `comma
 | `factory:approved` | A human approved; continue past the hold | `0e8a16` |
 | `factory:blocked` | Needs a human answer; the issue comment says why | `d93f0b` |
 | `factory:stop` | Kill switch, checked before every stage | `b60205` |
-| `factory:done` | Merged and smoke-checked | `5319e7` |
+| `factory:done` | Merged into the target branch | `5319e7` |
 | `factory:epic` | Parent of a group of tickets | `c5def5` |
 | `factory` | On every factory PR | `ededed` |
-| `factory:revert` | A revert PR opened by the factory (counted by the circuit breaker) | `b60205` |
+| `factory:revert` | Add it to any PR that reverts a factory PR, so the circuit breaker counts it. GitHub's Revert button is detected without it | `b60205` |
 
 ## Resume
 
