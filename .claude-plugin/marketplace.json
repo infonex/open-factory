@@ -1,0 +1,15 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "open-factory",
+  "description": "open-factory: a software factory for Claude Code",
+  "owner": { "name": "ludmal" },
+  "plugins": [
+    {
+      "name": "open-factory",
+      "description": "/factory: ticket, epic or instructions → analysis → OpenSpec spec → parallel developers → hidden-scenario verification → independent review → automatic merge and smoke check.",
+      "author": { "name": "ludmal" },
+      "source": "./",
+      "homepage": "https://github.com/ludmal/open-factory"
+    }
+  ]
+}

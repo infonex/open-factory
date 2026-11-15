@@ -1,0 +1,39 @@
+# open-factory configuration. Lives at the repo root and is committed.
+# Changes to this file are never merged by the factory itself: a human merges them.
+version: 1
+
+tracker:
+  ready_label: factory:ready      # only issues with this label enter `/factory run`
+  default_branch: main
+
+policy:
+  merge: auto                     # auto: the release agent merges (dark factory) | human: it stops at a ready PR
+  spec_approval: none             # none | epics | always
+  hold_for_human: []              # categories that stop before merge. Options:
+                                  # infrastructure, destructive-migration, payments, auth,
+                                  # ci-config, dependency-major, public-api
+  max_fix_rounds: 2               # failed verify/review rounds sent back to developers before a human is asked
+  holdout_pass_rate: 1.0          # share of hidden scenarios that must pass (0.0–1.0)
+  circuit_breaker:
+    max_reverts_7d: 2             # more factory reverts than this in 7 days switches merge to human
+
+agents:
+  max_parallel_developers: 4      # across all items in flight
+  models:                         # opus | sonnet | haiku
+    analyst: opus
+    spec_writer: opus
+    developer: opus
+    verifier: sonnet
+    reviewer: opus
+    release: sonnet
+
+commands:                         # filled in by `/factory init`; leave empty to skip
+  install: ""                     # e.g. pnpm install --frozen-lockfile
+  lint: ""                        # e.g. pnpm lint
+  typecheck: ""                   # e.g. pnpm exec tsc --noEmit
+  test: ""                        # e.g. pnpm test
+  build: ""                       # e.g. pnpm build
+  start: ""                       # starts the app locally for the verifier, e.g. pnpm dev --port $PORT
+  e2e: ""                         # e.g. pnpm exec playwright test
+  smoke: ""                       # runs after merge against the deployed app, e.g. ./scripts/smoke.sh https://app.example.com
+  smoke_after_seconds: 300        # wait for the deployment before smoke
