@@ -96,7 +96,7 @@ Copy `skills/factory/` into your repo at the path your tool reads skills from:
 Agents that can't get their own worktree from the tool create one with `git worktree add`; the skill tells them
 how. Set `agents.models` in `factory.yaml` to your tool's model names.
 
-> Built and run on Claude Code. The other tools are supported through the open Agent Skills and OpenSpec standards
+> Built on Claude Code. The other tools are supported through the open Agent Skills and OpenSpec standards
 > but haven't been tested yet. Skill paths are as of November 2026, so check your tool's docs.
 
 **Claude Code plugin** (every repo on your machine):
