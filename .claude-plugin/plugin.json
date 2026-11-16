@@ -3,8 +3,8 @@
   "version": "0.1.0",
   "description": "A software factory for Claude Code: /factory takes a ticket, epic, instructions or the ready queue through analysis, an OpenSpec spec, parallel developers, hidden-scenario verification, independent review and an automatic merge.",
   "author": { "name": "ludmal" },
-  "homepage": "https://github.com/ludmal/open-factory#readme",
-  "repository": "https://github.com/ludmal/open-factory",
+  "homepage": "https://github.com/infonex/open-factory#readme",
+  "repository": "https://github.com/infonex/open-factory",
   "license": "MIT",
   "keywords": ["software-factory", "agents", "openspec", "spec-driven-development", "ci", "automation"]
 }

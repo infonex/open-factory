@@ -9,7 +9,7 @@
       "description": "/factory: ticket, epic or instructions → analysis → OpenSpec spec → parallel developers → hidden-scenario verification → independent review → automatic merge into main (never deploys to production).",
       "author": { "name": "ludmal" },
       "source": "./",
-      "homepage": "https://github.com/ludmal/open-factory"
+      "homepage": "https://github.com/infonex/open-factory"
     }
   ]
 }

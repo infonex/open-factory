@@ -102,7 +102,7 @@ how. Set `agents.models` in `factory.yaml` to your tool's model names.
 **Claude Code plugin** (every repo on your machine):
 
 ```
-/plugin marketplace add ludmal/open-factory
+/plugin marketplace add infonex/open-factory
 /plugin install open-factory@open-factory
 ```
 
